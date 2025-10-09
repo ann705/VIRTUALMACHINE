@@ -1,0 +1,23 @@
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# Archivos temporales de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Archivos de Flask
+uploads/
+data/
+
+# Configuración local
+*.db
+*.sqlite3
+instance/
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
