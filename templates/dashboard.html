@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <title>Dashboard Anual Capacidades IaaS</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #f7f8fb; }
+        .card-cute { border-radius: 12px; box-shadow: 0 6px 18px rgba(20,20,50,0.06); }
+        .small-card { border-radius: 10px; padding: 18px; }
+        .file-list { max-height: 300px; overflow-y: auto; }
+    </style>
+</head>
+<body class="container py-5">
+    <h1 class="mb-4 text-primary">📊 Dashboard Anual Capacidades IaaS</h1>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        {% for category, message in messages %}
+            <div class="alert alert-{{ 'danger' if category=='danger' else ( 'warning' if category=='warning' else 'success') }} alert-dismissible fade show">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    <div class="card card-cute p-4 mb-4">
+        <form action="/procesar-iaas" method="POST" enctype="multipart/form-data" class="row g-3 align-items-end">
+            <div class="col-md-6">
+                <label class="form-label">Archivos Excel (múltiples)</label>
+                <input type="file" name="excel_files" accept=".xlsx,.xls" class="form-control" multiple required>
+                <div class="form-text">Selecciona todos tus archivos mensuales. Se detectará automáticamente el año y mes.</div>
+            </div>
+
+            <div class="col-md-3">
+                <label class="form-label">Capacidad</label>
+                <select name="metric" class="form-select">
+                    <option value="cpu">CPU</option>
+                    <option value="ram">RAM</option>
+                    <option value="storage">Almacenamiento</option>
+                </select>
+            </div>
+
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-primary w-100 mb-2">Procesar Archivos</button>
+                <button type="submit" name="clear_history" value="true" class="btn btn-outline-danger w-100" 
+                        onclick="return confirm('¿Estás seguro de limpiar todo el histórico?')">
+                    🗑️ Limpiar Histórico
+                </button>
+            </div>
+        </form>
+    </div>
+
+    {% if historical_data %}
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card small-card" style="background:#e8f5e8;">
+                <h6 class="mb-2">📁 Archivos Cargados</h6>
+                <p class="fs-4 fw-bold">{{ total_files }}</p>
+                <div class="text-muted small">Períodos diferentes en histórico</div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card small-card" style="background:#fff0e6;">
+                <h6 class="mb-2">📅 Años Disponibles</h6>
+                <p class="fs-4 fw-bold">{{ years_loaded|join(', ') }}</p>
+                <div class="text-muted small">Datos cargados por año</div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if grafico %}
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card card-cute p-3 mb-4">
+                <h5 class="mb-3">📈 Evolución Anual - {{ chosen_metric }}</h5>
+                <img src="data:image/png;base64,{{ grafico }}" class="img-fluid" alt="gráfica anual">
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            {% if historical_data %}
+            <div class="card card-cute p-3">
+                <h6 class="mb-3">📋 Archivos Procesados</h6>
+                <div class="file-list">
+                    {% for entry in historical_data|sort(attribute='year', reverse=true)|sort(attribute='month', reverse=true) %}
+                    <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+                        <div>
+                            <small class="text-muted">{{ entry.year }}-{{ '%02d' % entry.month }}</small>
+                            <div class="small">{{ entry.filename[:30] }}{% if entry.filename|length > 30 %}...{% endif %}</div>
+                        </div>
+                        <div class="text-end">
+                            <small class="text-success">
+                                CPU: {{ entry.metrics.get('cpu', 0)|int }}<br>
+                                RAM: {{ entry.metrics.get('ram', 0)|int }}GB
+                            </small>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <footer class="mt-5 text-muted small text-center">
+        Diseñado para Hollman Suescun — Dashboard Anual IaaS v2.0
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

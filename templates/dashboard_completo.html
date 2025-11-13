@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <title>Dashboard Completo IaaS</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #f7f8fb; }
+        .card-cute { border-radius: 12px; box-shadow: 0 6px 18px rgba(20,20,50,0.06); }
+        .small-card { border-radius: 10px; padding: 18px; }
+        .file-list { max-height: 300px; overflow-y: auto; }
+        .upload-btn { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+    </style>
+</head>
+<body class="container py-5">
+    <h1 class="mb-4 text-primary">🤖 Dashboard Completo IaaS</h1>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        {% for category, message in messages %}
+            <div class="alert alert-{{ 'danger' if category=='danger' else ( 'warning' if category=='warning' else 'success') }} alert-dismissible fade show">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    <div class="card card-cute p-4 mb-4">
+        <form action="/procesar-iaas" method="POST" enctype="multipart/form-data" class="row g-3 align-items-end">
+            
+            <div class="col-md-4">
+                <label class="form-label">📤 Subir Nuevos Excel</label>
+                <input type="file" name="excel_files" accept=".xlsx,.xls" class="form-control" multiple>
+                <div class="form-text">Agrega nuevos archivos Excel</div>
+            </div>
+
+            <div class="col-md-3">
+                <label class="form-label">📊 Métrica</label>
+                <select name="metric" class="form-select">
+                    <option value="cpu">CPU</option>
+                    <option value="ram">RAM</option>
+                    <option value="storage">Almacenamiento</option>
+                </select>
+            </div>
+
+            <div class="col-md-5">
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn upload-btn">
+                        📁 Subir + Procesar Todo
+                    </button>
+                    <button type="submit" name="clear_history" value="true" class="btn btn-outline-danger" 
+                            onclick="return confirm('¿Estás seguro de limpiar todo el histórico?')">
+                        🗑️ Limpiar Histórico
+                    </button>
+                </div>
+            </div>
+        </form>
+
+        <div class="mt-3 p-3" style="background: #f8f9fa; border-radius: 8px;">
+            <small class="text-muted">
+                <strong>📁 Carpeta actual:</strong> excels/ | 
+                <strong>Archivos detectados:</strong> {{ historical_data|length if historical_data else 0 }}
+            </small>
+        </div>
+    </div>
+
+    {% if historical_data %}
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card small-card" style="background:#e8f5e8;">
+                <h6 class="mb-2">📁 Archivos Totales</h6>
+                <p class="fs-4 fw-bold">{{ total_files }}</p>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card small-card" style="background:#fff0e6;">
+                <h6 class="mb-2">📅 Años</h6>
+                <p class="fs-4 fw-bold">{{ years_loaded|join(', ') }}</p>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card small-card" style="background:#e6f3ff;">
+                <h6 class="mb-2">📊 Visualizando</h6>
+                <p class="fs-4 fw-bold">{{ chosen_metric }}</p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if grafico %}
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card card-cute p-3 mb-4">
+                <h5 class="mb-3">📈 Evolución Anual - {{ chosen_metric }}</h5>
+                <img src="data:image/png;base64,{{ grafico }}" class="img-fluid" alt="gráfica anual">
+            </div>
+        </div>
+
+<!-- CUADRO DE RESUMEN -->
+{% if resumen_metricas %}
+<div class="card mt-4">
+    <div class="card-header bg-info text-white">
+        <h5 class="mb-0">📊 Resumen Anual - {{ chosen_metric }}</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-sm">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Centro</th>
+                        <th>Línea Base</th>
+                        <th>Consumo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>TRIARA</strong></td>
+                        <td>{{ resumen_metricas.triara_base | int }}</td>
+                        <td>{{ resumen_metricas.triara_consumo | int }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>MEGACENTER</strong></td>
+                        <td>{{ resumen_metricas.megacenter_base | int }}</td>
+                        <td>{{ resumen_metricas.megacenter_consumo | int }}</td>
+                    </tr>
+                    <tr class="table-success">
+                        <td><strong>TOTAL</strong></td>
+                        <td><strong>{{ resumen_metricas.total_base | int }}</strong></td>
+                        <td><strong>{{ resumen_metricas.total_consumo | int }}</strong></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if historical_data %}
+<div class="mt-3">
+<table class="table table-sm table-bordered text-center" style="font-size: 0.9rem;">
+    <thead class="table-light">
+    <tr>
+        <th>Mes</th>
+        <th>{{ chosen_metric }}</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for entry in historical_data|sort(attribute='month') %}
+    <tr>
+        <td>{{ "%02d" % entry.month }}/{{ entry.year }}</td>
+        <td>{{ entry.metrics.get(chosen_metric.lower(), '-') }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endif %}
+
+    {% if resumen %}
+<div class="card card-cute p-3 mb-4">
+<h6 class="mb-3">📋 Resumen de Consumo {{ years_loaded|last }}</h6>
+<div class="row text-center">
+    <div class="col-md-4"><strong>CPU:</strong> {{ resumen.cpu|round(2) }}</div>
+    <div class="col-md-4"><strong>RAM:</strong> {{ resumen.ram|round(2) }}</div>
+    <div class="col-md-4"><strong>Storage:</strong> {{ resumen.storage|round(2) }}</div>
+</div>
+</div>
+{% endif %}
+    
+
+        <div class="col-lg-4">
+            <div class="card card-cute p-3">
+                <h6 class="mb-3">📋 Archivos Procesados</h6>
+                <div class="file-list">
+                    {% for entry in historical_data|sort(attribute='year', reverse=true)|sort(attribute='month', reverse=true) %}
+                    <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+                        <div>
+                            <small class="text-muted">{{ entry.year }}-{{ '%02d' % entry.month }}</small>
+                            <div class="small text-truncate" style="max-width: 150px;" title="{{ entry.filename }}">
+                                {{ entry.filename }}
+                            </div>
+                        </div>
+                        <div class="text-end">
+                            <small class="text-success">
+                                {{ entry.metrics.get(chosen_metric.lower(), 0)|int }}
+                            </small>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <footer class="mt-5 text-muted small text-center">
+        🤖 Dashboard Completo IaaS - Sube archivos o procesa automáticamente
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

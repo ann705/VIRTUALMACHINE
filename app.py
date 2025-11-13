@@ -1,3 +1,4 @@
+
 from flask import Flask, render_template, request, send_file, flash
 from werkzeug.utils import secure_filename
 import pandas as pd
@@ -68,30 +69,55 @@ def extraer_impuestos_pagina2(texto):
     return impuestos
 
 def extraer_servicios_pagina3(texto):
-    """Extrae servicios de IP DATA EXTRANET LOCAL"""
+    """Extrae servicios BLS específicos y el SUBTOTAL GENERAL"""
     servicios = []
+    subtotal_general = "No encontrado"
     
-    # Buscar líneas que contengan códigos BLS
-    lineas = texto.split('\n')
+    print("=== BUSCANDO SERVICIOS BLS Y SUBTOTAL ===")
     
-    for linea in lineas:
-        # Buscar patrones de servicios BLS
-        if 'BLS' in linea:
-            # Patrón para extraer código, descripción y precios
-            patron = r'([A-Z]{3}\d{4})\s+(.+?)\s+(\d+)\s+\d{4}-\d{2}-\d{2}\s+\d{4}-\d{2}-\d{2}\s+\$\s*([\d\.,]+)\s+\$\s*([\d\.,]+)\s+\$\s*([\d\.,]+)'
-            coincidencia = re.search(patron, linea)
-            
-            if coincidencia:
-                servicio = {
-                    'CODIGO_SERVICIO': coincidencia.group(1),
-                    'DESCRIPCION': coincidencia.group(2).strip(),
-                    'CANTIDAD': coincidencia.group(3),
-                    'VALOR_UNITARIO': f"${coincidencia.group(4)}",
-                    'SUBTOTAL_DOLAR': f"${coincidencia.group(6)}"
-                }
-                servicios.append(servicio)
+    # Buscar SOLO códigos BLS específicos (BLS0152, BLS0291, etc.)
+    patron_servicios_bls = r'(BLS\d{4})\s+(.+?)\s+\$\s*([\d\.,]+)\s*\$\s*([\d\.,]+)'
+    servicios_encontrados = re.findall(patron_servicios_bls, texto)
     
-    return servicios
+    for servicio in servicios_encontrados:
+        codigo = servicio[0]
+        descripcion = servicio[1].strip()
+        valor_unitario = servicio[2]
+        subtotal_dolar = servicio[3]
+        
+        servicios.append({
+            'CODIGO_SERVICIO': codigo,
+            'DESCRIPCION': descripcion,
+            'CANTIDAD': '1',
+            'VALOR_UNITARIO': f"${valor_unitario}",
+            'SUBTOTAL_DOLAR': f"${subtotal_dolar}",
+            'SUBTOTAL': f"${valor_unitario}"
+        })
+        print(f"✅ Servicio BLS encontrado: {codigo} - {descripcion}")
+    
+    # BUSCAR SUBTOTAL - VOLVEMOS AL PATRÓN QUE SÍ FUNCIONABA
+    patron_subtotal = r'SUBTOTAL\s*[\:\-]?\s*\$\s*([\d\.,]+)'
+    coincidencia = re.search(patron_subtotal, texto, re.IGNORECASE)
+    
+    if coincidencia:
+        subtotal_general = f"${coincidencia.group(1)}"
+        print(f"✅ SUBTOTAL ENCONTRADO: {subtotal_general}")
+    else:
+        # Buscar en líneas que contengan SUBTOTAL
+        lineas = texto.split('\n')
+        for linea in lineas:
+            if 'SUBTOTAL' in linea.upper():
+                print(f"📄 Línea con SUBTOTAL: {linea}")
+                numeros = re.findall(r'\$\s*([\d\.,]+)', linea)
+                if numeros:
+                    subtotal_general = f"${numeros[-1]}"
+                    print(f"💰 Subtotal extraído: {subtotal_general}")
+                    break
+    
+    print(f"📊 Servicios BLS encontrados: {len(servicios)}")
+    print(f"💰 Subtotal general: {subtotal_general}")
+    
+    return servicios, subtotal_general
 
 def extraer_datos_completos_factura(pdf_path):
     """
@@ -100,7 +126,8 @@ def extraer_datos_completos_factura(pdf_path):
     datos_completos = {
         'informacion_general': {},
         'impuestos': {},
-        'servicios': []
+        'servicios': [],
+        'subtotal_general': ''
     }
     
     try:
@@ -121,8 +148,13 @@ def extraer_datos_completos_factura(pdf_path):
             if len(pdf.pages) > 2:
                 pagina3 = pdf.pages[2]
                 texto_pagina3 = pagina3.extract_text() or ""
-                datos_completos['servicios'] = extraer_servicios_pagina3(texto_pagina3)
-            
+                print("=== TEXTO PÁGINA 3 ===")
+                print(texto_pagina3)
+                print("======================")
+                servicios, subtotal_general = extraer_servicios_pagina3(texto_pagina3)
+                datos_completos['servicios'] = servicios
+                datos_completos['subtotal_general'] = subtotal_general
+    
     except Exception as e:
         print(f"Error procesando PDF: {e}")
         flash(f'Error al procesar el PDF: {str(e)}', 'error')
@@ -177,6 +209,7 @@ def upload_pdf():
             info_general = datos_factura['informacion_general']
             impuestos = datos_factura['impuestos']
             servicios = datos_factura['servicios']
+            subtotal_general = datos_factura['subtotal_general']
             
             # Si hay servicios, crear una fila por cada servicio
             if servicios:
@@ -194,6 +227,23 @@ def upload_pdf():
                         'SUBTOTAL_DOLAR': servicio.get('SUBTOTAL_DOLAR', '')
                     }
                     filas_data.append(fila)
+
+                
+                # AGREGAR FILA CON EL SUBTOTAL GENERAL
+                fila_subtotal_general = {
+                    'FACTURA_ELECTRONICA': '',
+                    'FECHA_CORTE_NOVEDADES': '',
+                    'TOTAL_A_PAGAR': '',
+                    'TOTAL_IVA': '',
+                    'TOTAL_RETE_ICA': '',
+                    'CODIGO_SERVICIO': 'SUBTOTAL',
+                    'DESCRIPCION': 'Total general de todos los servicios',
+                    'CANTIDAD': '',
+                    'VALOR_UNITARIO': '',
+                    'SUBTOTAL_DOLAR': subtotal_general
+                }
+                filas_data.append(fila_subtotal_general)
+                
             else:
                 # Si no hay servicios, crear una fila solo con la información general
                 fila = {
@@ -203,10 +253,10 @@ def upload_pdf():
                     'TOTAL_IVA': impuestos.get('TOTAL_IVA', 'No encontrado'),
                     'TOTAL_RETE_ICA': impuestos.get('TOTAL_RETE_ICA', 'No encontrado'),
                     'CODIGO_SERVICIO': 'No hay servicios',
-                    'DESCRIPCION': 'No hay servicios',
+                    'DESCRIPCION': 'No hay servicios detectados en el PDF',
                     'CANTIDAD': '',
                     'VALOR_UNITARIO': '',
-                    'SUBTOTAL_DOLAR': ''
+                    'SUBTOTAL_DOLAR': subtotal_general
                 }
                 filas_data.append(fila)
 
@@ -225,37 +275,5 @@ def upload_pdf():
                 flash('⚠️ No se encontraron datos válidos en el PDF', 'error')
 
     return render_template("upload_pdf.html")
-
-# 📊 Consulta de VMs
-@app.route("/consulta-vm", methods=["GET", "POST"])
-def consulta_vm():
-    query = None
-    periodo = None
-    resumen = None
-    mostrar_botones = False
-
-    if request.method == "POST":
-        query = request.form.get("query")
-        periodo = request.form.get("periodo")
-        df = cargar_datos()
-
-        if not df.empty and query:
-            df_vm = df[df.apply(lambda row: row.astype(str).str.contains(query, case=False).any(), axis=1)]
-            
-            if not df_vm.empty:
-                mostrar_botones = True
-
-                if periodo:
-                    columnas = [c for c in df_vm.columns if "CPU" in c or "Mem" in c or "Disk" in c]
-                    df_metrics = df_vm[columnas]
-                    promedios = df_metrics.mean(numeric_only=True)
-
-                    resumen = promedios.reset_index()
-                    resumen.columns = ["Métrica", "Promedio"]
-                    resumen = resumen.to_html(classes="table table-bordered", index=False)
-
-    return render_template("index.html", query=query, mostrar_botones=mostrar_botones, resumen=resumen, periodo=periodo)
-
-# 🚀 Arranque del servidor
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
